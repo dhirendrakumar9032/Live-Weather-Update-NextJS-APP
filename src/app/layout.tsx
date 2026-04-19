@@ -3,12 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Mausam Studio",
-    template: "%s | Mausam Studio",
+    default: "Mausam Live Updates",
+    template: "%s | Mausam Live Updates",
   },
   description:
     "Weather dashboard with SSR, SSG, and live Open-Meteo updates built with Next.js.",
-  applicationName: "Mausam Studio",
+  applicationName: "Mausam Live Updates",
   keywords: ["weather", "nextjs", "ssr", "ssg", "open-meteo"],
   icons: [
     { rel: "icon", url: "/weatherIcon.png" },
