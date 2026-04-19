@@ -1,5 +1,5 @@
 {
-  "name": "weather-nextjs-ssr-ssg",
+  "name": "weather-live-updates-nextjs-app",
   "version": "0.1.0",
   "private": true,
   "scripts": {
