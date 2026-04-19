@@ -1,6 +1,7 @@
-# Mausam Studio
+# Mausam Update
 
 Mausam Studio is a weather dashboard built with Next.js App Router.
+
 <img width="1470" height="800" alt="image" src="https://github.com/user-attachments/assets/864cec69-7c5b-494c-bbb1-5bfcfa787677" />
 
 
