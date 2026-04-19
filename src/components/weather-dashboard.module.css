@@ -11,6 +11,12 @@
   gap: 1rem;
 }
 
+.topBar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .searchBar {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -28,7 +34,8 @@
 .dailyCard,
 .rightPanel,
 .hourlyRow,
-.daySelect {
+.daySelect,
+.emptyState {
   border-radius: 16px;
   border: 1px solid var(--card-border);
   backdrop-filter: blur(8px);
@@ -59,6 +66,7 @@
   border-radius: 18px;
   font-size: 1.35rem;
   font-weight: 700;
+  padding: 0 1.2rem;
   color: #f3f4ff;
   background: linear-gradient(140deg, #5366ff 0%, #6f5bff 100%);
   cursor: pointer;
@@ -73,6 +81,18 @@
   color: var(--text-muted);
   padding: 0.65rem 1rem;
   font-size: 0.95rem;
+}
+
+.bannerItem {
+  margin: 0;
+}
+
+.bannerLive {
+  color: var(--text-muted);
+}
+
+.bannerStale {
+  color: #ffe3e3;
 }
 
 .quickLinks {
@@ -313,6 +333,12 @@
 
 .hourlyTemp {
   font-size: 1.15rem;
+  color: var(--text-muted);
+}
+
+.emptyState {
+  background: rgba(53, 62, 130, 0.56);
+  padding: 0.95rem 0.9rem;
   color: var(--text-muted);
 }
 

@@ -1,40 +1,102 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { WeatherSnapshot } from "@/lib/weather";
+import { useWeatherPolling, type WeatherSyncStatus } from "./use-weather-polling";
 import styles from "./weather-dashboard.module.css";
 
 type WeatherDashboardProps = {
   initialWeather: WeatherSnapshot;
   initialCityQuery: string;
   renderMode: "SSR" | "SSG";
-  staticLinks: Array<{ slug: string; city: string }>;
+  staticLinks: ReadonlyArray<{ slug: string; city: string }>;
 };
 
-const POLLING_INTERVAL = 60000;
+type MetricCard = {
+  label: string;
+  value: string;
+};
 
-const formatFullDate = (dateValue: string, timezone: string) =>
-  new Intl.DateTimeFormat("en-US", {
+const DEFAULT_TIME_ZONE = "Asia/Kolkata";
+
+const formatInTimeZone = (
+  dateValue: string,
+  timezone: string,
+  options: Intl.DateTimeFormatOptions
+): string =>
+  new Intl.DateTimeFormat("en-IN", {
+    ...options,
+    timeZone: timezone,
+  }).format(new Date(dateValue));
+
+const formatLongDate = (dateValue: string, timezone: string): string =>
+  formatInTimeZone(dateValue, timezone, {
     weekday: "long",
     month: "short",
     day: "numeric",
     year: "numeric",
-    timeZone: timezone,
-  }).format(new Date(dateValue));
+  });
 
-const formatDay = (dateValue: string, timezone: string) =>
-  new Intl.DateTimeFormat("en-US", {
+const formatDayName = (dateValue: string, timezone: string): string =>
+  formatInTimeZone(dateValue, timezone, {
     weekday: "short",
-    timeZone: timezone,
-  }).format(new Date(dateValue));
+  });
 
-const formatHour = (dateValue: string, timezone: string) =>
-  new Intl.DateTimeFormat("en-US", {
+const formatHour = (dateValue: string, timezone: string): string =>
+  formatInTimeZone(dateValue, timezone, {
     hour: "numeric",
     hour12: true,
-    timeZone: timezone,
-  }).format(new Date(dateValue));
+  });
+
+const formatLastUpdatedTime = (dateValue: string, timezone: string): string =>
+  formatInTimeZone(dateValue, timezone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+const getModeLabel = (renderMode: "SSR" | "SSG"): string =>
+  renderMode === "SSR"
+    ? "SSR: server-rendered on each request"
+    : "SSG: static generation with ISR refresh";
+
+const getSourceLabel = (source: WeatherSnapshot["source"]): string =>
+  source === "live"
+    ? "Source: Open-Meteo live feed"
+    : "Source: Local fallback data";
+
+const getSyncLabel = (syncStatus: WeatherSyncStatus): string => {
+  if (syncStatus === "syncing") {
+    return "Sync: refreshing";
+  }
+
+  if (syncStatus === "degraded") {
+    return "Sync: paused";
+  }
+
+  return "Sync: healthy";
+};
+
+const getMetricCards = (snapshot: WeatherSnapshot): MetricCard[] => [
+  {
+    label: "Feels Like",
+    value: `${Math.round(snapshot.current.apparentTemperature)}°`,
+  },
+  {
+    label: "Humidity",
+    value: `${Math.round(snapshot.current.humidity)}%`,
+  },
+  {
+    label: "Wind",
+    value: `${Math.round(snapshot.current.windSpeed)} km/h`,
+  },
+  {
+    label: "Precipitation",
+    value: `${snapshot.current.precipitation.toFixed(1)} mm`,
+  },
+];
 
 export default function WeatherDashboard({
   initialWeather,
@@ -42,107 +104,70 @@ export default function WeatherDashboard({
   renderMode,
   staticLinks,
 }: WeatherDashboardProps) {
-  const [weather, setWeather] = useState(() => initialWeather);
+  const { weather, syncStatus } = useWeatherPolling({
+    initialSnapshot: initialWeather,
+    cityQuery: initialCityQuery,
+  });
+
   const [activeDate, setActiveDate] = useState(
     () => initialWeather.daily[0]?.date ?? ""
   );
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const refreshData = async () => {
-      try {
-        const response = await fetch(
-          `/api/weather?city=${encodeURIComponent(initialCityQuery)}`,
-          { cache: "no-store" }
-        );
-
-        if (!response.ok) {
-          return;
-        }
-
-        const nextWeather = (await response.json()) as WeatherSnapshot;
-        if (isMounted) {
-          setWeather(nextWeather);
-          setActiveDate((previous) => {
-            const stillExists = nextWeather.daily.some(
-              (day) => day.date === previous
-            );
-            return stillExists ? previous : nextWeather.daily[0]?.date ?? "";
-          });
-        }
-      } catch {
-        // Ignore polling errors and keep the latest successful state.
-      }
-    };
-
-    const timerId = window.setInterval(refreshData, POLLING_INTERVAL);
-    return () => {
-      isMounted = false;
-      window.clearInterval(timerId);
-    };
-  }, [initialCityQuery]);
-
-  const timezone = weather.city.timezone || "IST";
+  const timezone = weather.city.timezone || DEFAULT_TIME_ZONE;
   const selectedDate = weather.daily.some((day) => day.date === activeDate)
     ? activeDate
     : weather.daily[0]?.date ?? "";
 
-  const selectedDayHourly = useMemo(
+  const hourlyForSelectedDate = useMemo(
     () =>
       weather.hourly
         .filter((hour) => hour.time.startsWith(selectedDate))
-        .slice(0, 10),
-    [weather.hourly, selectedDate]
+        .slice(0, 12),
+    [selectedDate, weather.hourly]
   );
 
-  const pageModeLabel =
-    renderMode === "SSR"
-      ? "SSR page: rendered fresh on every request"
-      : "SSG page: pre-rendered with incremental updates";
-  const dataSourceLabel =
-    weather.source === "live"
-      ? "Data source: Live Open-Meteo API"
-      : "Data source: Fallback sample (API unavailable)";
+  const metrics = getMetricCards(weather);
 
   return (
     <main className={styles.page}>
       <section className={styles.shell}>
-        <form action="/" method="get" className={styles.searchBar}>
-          <input
-            type="text"
-            name="city"
-            className={styles.searchInput}
-            placeholder="Search for a place..."
-            defaultValue={initialCityQuery}
-            aria-label="City name"
-          />
-          <button type="submit" className={styles.searchButton}>
-            Search
-          </button>
-        </form>
+        <header className={styles.topBar}>
+          <form action="/" method="get" className={styles.searchBar}>
+            <input
+              type="text"
+              name="city"
+              className={styles.searchInput}
+              placeholder="Search a city (e.g. Pune, Singapore)"
+              defaultValue={initialCityQuery}
+              aria-label="City name"
+            />
+            <button type="submit" className={styles.searchButton}>
+              Check Weather
+            </button>
+          </form>
+
+          <nav className={styles.quickLinks} aria-label="Featured cities">
+            {staticLinks.map((link) => (
+              <Link key={link.slug} href={`/city/${link.slug}`} className={styles.quickLink}>
+                {link.city}
+              </Link>
+            ))}
+          </nav>
+        </header>
 
         <div className={styles.modeBanner}>
-          <span>{pageModeLabel}</span>
-          <span>{dataSourceLabel}</span>
-          <span>
-            Last update:{" "}
-            {new Intl.DateTimeFormat("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: true,
-              timeZone: timezone,
-            }).format(new Date(weather.generatedAt))}
-          </span>
-        </div>
-
-        <div className={styles.quickLinks}>
-          {staticLinks.map((link) => (
-            <Link key={link.slug} href={`/city/${link.slug}`} className={styles.quickLink}>
-              {link.city}
-            </Link>
-          ))}
+          <p className={styles.bannerItem}>{getModeLabel(renderMode)}</p>
+          <p className={styles.bannerItem}>{getSourceLabel(weather.source)}</p>
+          <p
+            className={`${styles.bannerItem} ${
+              syncStatus === "degraded" ? styles.bannerStale : styles.bannerLive
+            }`}
+          >
+            {getSyncLabel(syncStatus)}
+          </p>
+          <p className={styles.bannerItem}>
+            Updated at {formatLastUpdatedTime(weather.generatedAt, timezone)}
+          </p>
         </div>
 
         <div className={styles.layoutGrid}>
@@ -153,7 +178,7 @@ export default function WeatherDashboard({
                   {weather.city.name}, {weather.city.country}
                 </p>
                 <p className={styles.dateText}>
-                  {formatFullDate(weather.current.time, timezone)}
+                  {formatLongDate(weather.current.time, timezone)}
                 </p>
                 <p className={styles.condition}>{weather.current.weatherLabel}</p>
               </div>
@@ -167,30 +192,16 @@ export default function WeatherDashboard({
             </article>
 
             <div className={styles.metricsGrid}>
-              <article className={styles.metricCard}>
-                <p className={styles.metricLabel}>Feels Like</p>
-                <p className={styles.metricValue}>
-                  {Math.round(weather.current.apparentTemperature)}°
-                </p>
-              </article>
-              <article className={styles.metricCard}>
-                <p className={styles.metricLabel}>Humidity</p>
-                <p className={styles.metricValue}>{Math.round(weather.current.humidity)}%</p>
-              </article>
-              <article className={styles.metricCard}>
-                <p className={styles.metricLabel}>Wind</p>
-                <p className={styles.metricValue}>{Math.round(weather.current.windSpeed)} km/h</p>
-              </article>
-              <article className={styles.metricCard}>
-                <p className={styles.metricLabel}>Precipitation</p>
-                <p className={styles.metricValue}>
-                  {weather.current.precipitation.toFixed(1)} mm
-                </p>
-              </article>
+              {metrics.map((metric) => (
+                <article key={metric.label} className={styles.metricCard}>
+                  <p className={styles.metricLabel}>{metric.label}</p>
+                  <p className={styles.metricValue}>{metric.value}</p>
+                </article>
+              ))}
             </div>
 
             <section className={styles.dailySection}>
-              <h2 className={styles.sectionTitle}>Daily forecast</h2>
+              <h2 className={styles.sectionTitle}>7-Day Forecast</h2>
               <div className={styles.dailyGrid}>
                 {weather.daily.map((day) => (
                   <button
@@ -200,8 +211,9 @@ export default function WeatherDashboard({
                       selectedDate === day.date ? styles.dailyCardActive : ""
                     }`}
                     onClick={() => setActiveDate(day.date)}
+                    aria-pressed={selectedDate === day.date}
                   >
-                    <p className={styles.dayName}>{formatDay(day.date, timezone)}</p>
+                    <p className={styles.dayName}>{formatDayName(day.date, timezone)}</p>
                     <p className={styles.dayIcon}>{day.weatherIcon}</p>
                     <p className={styles.dayTemps}>
                       <span>{Math.round(day.max)}°</span>
@@ -215,30 +227,37 @@ export default function WeatherDashboard({
 
           <aside className={styles.rightPanel}>
             <div className={styles.hourlyHeader}>
-              <h2 className={styles.sectionTitle}>Hourly forecast</h2>
+              <h2 className={styles.sectionTitle}>Hourly Forecast</h2>
               <select
                 value={selectedDate}
                 onChange={(event) => setActiveDate(event.target.value)}
                 className={styles.daySelect}
+                aria-label="Select forecast day"
               >
                 {weather.daily.map((day) => (
                   <option key={day.date} value={day.date}>
-                    {formatDay(day.date, timezone)}
+                    {formatDayName(day.date, timezone)}
                   </option>
                 ))}
               </select>
             </div>
 
             <div className={styles.hourlyList}>
-              {selectedDayHourly.map((hour) => (
-                <article className={styles.hourlyRow} key={hour.time}>
-                  <div className={styles.hourlyInfo}>
-                    <span className={styles.hourlyIcon}>{hour.weatherIcon}</span>
-                    <span className={styles.hourlyTime}>{formatHour(hour.time, timezone)}</span>
-                  </div>
-                  <p className={styles.hourlyTemp}>{Math.round(hour.temperature)}°</p>
-                </article>
-              ))}
+              {hourlyForSelectedDate.length > 0 ? (
+                hourlyForSelectedDate.map((hour) => (
+                  <article className={styles.hourlyRow} key={hour.time}>
+                    <div className={styles.hourlyInfo}>
+                      <span className={styles.hourlyIcon}>{hour.weatherIcon}</span>
+                      <span className={styles.hourlyTime}>
+                        {formatHour(hour.time, timezone)}
+                      </span>
+                    </div>
+                    <p className={styles.hourlyTemp}>{Math.round(hour.temperature)}°</p>
+                  </article>
+                ))
+              ) : (
+                <p className={styles.emptyState}>Hourly data is unavailable for this day.</p>
+              )}
             </div>
           </aside>
         </div>

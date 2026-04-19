@@ -1,9 +1,6 @@
 import WeatherDashboard from "@/components/weather-dashboard";
-import {
-  DEFAULT_CITY,
-  STATIC_CITY_MAP,
-  getWeatherByCity,
-} from "@/lib/weather";
+import { DEFAULT_CITY, STATIC_CITY_LINKS } from "@/lib/cities";
+import { getWeatherByCity } from "@/lib/weather";
 
 export const dynamic = "force-dynamic";
 
@@ -11,12 +8,18 @@ type HomePageProps = {
   searchParams: Promise<{ city?: string }>;
 };
 
+const resolveRequestedCity = (cityQuery?: string): string => {
+  if (typeof cityQuery !== "string") {
+    return DEFAULT_CITY;
+  }
+
+  const normalizedCity = cityQuery.trim();
+  return normalizedCity || DEFAULT_CITY;
+};
+
 export default async function Home({ searchParams }: HomePageProps) {
   const params = await searchParams;
-  const requestedCity =
-    typeof params.city === "string" && params.city.trim()
-      ? params.city
-      : DEFAULT_CITY;
+  const requestedCity = resolveRequestedCity(params.city);
 
   const weather = await getWeatherByCity(requestedCity, { mode: "dynamic" });
 
@@ -26,10 +29,7 @@ export default async function Home({ searchParams }: HomePageProps) {
       initialWeather={weather}
       initialCityQuery={requestedCity}
       renderMode="SSR"
-      staticLinks={Object.entries(STATIC_CITY_MAP).map(([slug, city]) => ({
-        slug,
-        city,
-      }))}
+      staticLinks={STATIC_CITY_LINKS}
     />
   );
 }
